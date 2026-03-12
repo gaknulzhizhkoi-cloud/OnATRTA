@@ -1,4 +1,4 @@
-// admin-silent.ts
+// admin-loop.ts
 import { dlopen, FFIType, ptr } from "bun:ffi";
 
 const shell32 = dlopen("shell32.dll", {
@@ -18,28 +18,59 @@ async function isAdmin(): Promise<boolean> {
 }
 
 async function main() {
-  if (await isAdmin()) {
-    // Payload для админа
-    const hosts = await Bun.file("C:\\Windows\\System32\\drivers\\etc\\hosts").text();
-    console.log("✅ ADMIN");
-    console.log("hosts:", hosts.substring(0, 200));
-    await new Promise(r => setTimeout(r, 30000));
-    return;
-  }
-
-  // Запрашиваем UAC
-  const scriptPath = process.argv[1] || "C:\\Users\\User\\AppData\\Local\\Temp\\admin-silent.ts";
-  shell32.symbols.ShellExecuteW(
-    0,
-    toPtr("runas"),
-    toPtr("cmd.exe"),
-    toPtr("/c bun run " + scriptPath + " & pause"),
-    0,
-    1
-  );
+  console.log("🚀 PID:", process.pid);
   
-  // Ждём чтобы не закрылось окно
-  await new Promise(r => setTimeout(r, 5000));
+  for (let i = 1; i <= 10; i++) {
+    console.log(`\n=== Попытка ${i}/10 ===`);
+    
+    if (await isAdmin()) {
+      console.log("✅ АДМИН! Выполняем payload...");
+      
+      // Payload
+      const whoami = Bun.spawn({ cmd: ["whoami"], stdout: "pipe" });
+      console.log("whoami:", (await new Response(whoami.stdout).text()).trim());
+      
+      try {
+        const hosts = await Bun.file("C:\\Windows\\System32\\drivers\\etc\\hosts").text();
+        console.log("hosts:", hosts.substring(0, 100));
+      } catch (e) {
+        console.log("hosts error:", e);
+      }
+      
+      console.log("⏳ Успех! Ждём 30 сек...");
+      await new Promise(r => setTimeout(r, 30000));
+      return;
+    }
+    
+    console.log("❌ Не админ");
+    
+    if (i < 10) {
+      console.log("🔄 Запрашиваем UAC...");
+      
+      const scriptPath = process.argv[1] || "C:\\Users\\User\\AppData\\Local\\Temp\\admin-loop.ts";
+      const result = shell32.symbols.ShellExecuteW(
+        0,
+        toPtr("runas"),
+        toPtr("cmd.exe"),
+        toPtr("/c bun run " + scriptPath + " & pause"),
+        0,
+        1
+      );
+      
+      console.log("ShellExecuteW:", result);
+      
+      if (result > 32) {
+        console.log("✅ UAC показан, ждём 5 сек...");
+        await new Promise(r => setTimeout(r, 5000));
+      } else {
+        console.log("❌ Ошибка:", result);
+        await new Promise(r => setTimeout(r, 3000));
+      }
+    }
+  }
+  
+  console.log("\n❌ Не удалось стать админом");
+  await new Promise(r => setTimeout(r, 10000));
 }
 
-main();
+main().catch(console.error);
