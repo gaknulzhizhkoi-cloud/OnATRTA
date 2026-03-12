@@ -1,23 +1,38 @@
 // admin-check.ts
 import { dlopen, FFIType, ptr } from "bun:ffi";
 
-// Логирование в файл для отладки
-const logFile = "C:\\Users\\User\\AppData\\Local\\Temp\\admin-log.txt";
-function log(msg: string) {
-  const timestamp = new Date().toISOString();
-  const line = `[${timestamp}] ${msg}\n`;
+// ПРАВИЛЬНАЯ проверка: net session (только админ может выполнить)
+async function isAdmin(): Promise<boolean> {
   try {
-    const existing = Bun.file(logFile).size > 0 ? require('fs').readFileSync(logFile, 'utf8') : '';
-    require('fs').writeFileSync(logFile, existing + line);
-  } catch {
-    require('fs').writeFileSync(logFile, line);
+    const proc = Bun.spawn({
+      cmd: ["net", "session"],
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    
+    const exitCode = await proc.exited;
+    console.log("net session exit code:", exitCode);
+    
+    // exit code 0 = админ, 2 или другое = не админ
+    return exitCode === 0;
+  } catch (e) {
+    console.log("net session error:", e);
+    return false;
   }
-  console.log(msg); // Дублируем в консоль
 }
 
-log("🚀 Скрипт запущен");
-log(`PID: ${process.pid}`);
-log(`Args: ${JSON.stringify(process.argv)}`);
+// Альтернативная проверка: пробуем записать в защищённое место
+async function isAdminWrite(): Promise<boolean> {
+  try {
+    const testPath = "C:\\Windows\\System32\\drivers\\etc\\admin_test_" + Date.now();
+    await Bun.write(testPath, "test");
+    // Если дошли сюда - админ
+    await Bun.file(testPath).delete();
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 const shell32 = dlopen("shell32.dll", {
   ShellExecuteW: {
@@ -30,80 +45,61 @@ function toPtr(str: string) {
   return ptr(Buffer.from(str + "\0", "utf16le"));
 }
 
-// Проверка через whoami /groups
-async function isAdmin(): Promise<boolean> {
-  try {
-    log("🔍 Запускаем whoami /groups...");
-    const proc = Bun.spawn(["whoami", "/groups"]);
-    const output = await new Response(proc.stdout).text();
-    const stderr = await new Response(proc.stderr).text();
-    const exitCode = await proc.exited;
-    
-    log(`whoami exit code: ${exitCode}`);
-    log(`whoami output: ${output.substring(0, 500)}`);
-    if (stderr) log(`whoami stderr: ${stderr}`);
-    
-    const isAdmin = output.includes("S-1-5-32-544") || 
-                    output.includes("Administrators") ||
-                    output.includes("Администраторы") ||
-                    output.includes("BUILTIN\\Administrators");
-    
-    log(`Is admin check: ${isAdmin}`);
-    return isAdmin;
-  } catch (e) {
-    log(`whoami failed: ${e}`);
-    return false;
-  }
-}
-
 async function main() {
-  for (let i = 1; i <= 10; i++) {
-    log(`\n=== Попытка ${i}/10 ===`);
+  console.log("🚀 Скрипт запущен");
+  console.log("PID:", process.pid);
+  
+  // Проверяем оба метода
+  const netAdmin = await isAdmin();
+  const writeAdmin = await isAdminWrite();
+  console.log("net session admin:", netAdmin);
+  console.log("write admin:", writeAdmin);
+  
+  const isReallyAdmin = netAdmin || writeAdmin;
+  
+  if (isReallyAdmin) {
+    console.log("✅ Подтверждено: мы администратор!");
+    console.log("whoami:", await new Response(Bun.spawn({cmd: ["whoami"], stdout: "pipe"}).stdout).text());
     
-    if (await isAdmin()) {
-      log("✅ Мы администратор!");
-      
-      // Payload
-      try {
-        const hosts = await Bun.file("C:\\Windows\\System32\\drivers\\etc\\hosts").text();
-        log(`📄 hosts файл прочитан, размер: ${hosts.length}`);
-      } catch (e) {
-        log(`❌ hosts: ${e}`);
-      }
-      
-      // Держим окно открытым 10 секунд чтобы увидеть результат
-      log("⏳ Ждём 10 секунд...");
-      await new Promise(r => setTimeout(r, 10000));
-      return;
+    // Payload
+    try {
+      const hosts = await Bun.file("C:\\Windows\\System32\\drivers\\etc\\hosts").text();
+      console.log("📄 hosts:", hosts.substring(0, 100));
+    } catch (e) {
+      console.log("❌ hosts:", e);
     }
     
-    log("❌ Не администратор, запрашиваем UAC...");
-    
-    const scriptPath = process.argv[1] || "C:\\Users\\User\\AppData\\Local\\Temp\\admin-check.ts";
-    log(`Script path: ${scriptPath}`);
-    
-    const result = shell32.symbols.ShellExecuteW(
-      0,
-      toPtr("runas"),
-      toPtr("bun.exe"),
-      toPtr("run " + scriptPath),
-      0,
-      1
-    );
-    
-    log(`ShellExecuteW result: ${result}`);
-    
-    if (result > 32) {
-      log("✅ UAC диалог показан, ждём...");
-      await new Promise(r => setTimeout(r, 5000));
-    } else {
-      log(`❌ Ошибка ShellExecuteW: ${result}`);
-      await new Promise(r => setTimeout(r, 3000));
-    }
+    await new Promise(r => setTimeout(r, 10000));
+    return;
   }
   
-  log("\n❌ Не удалось получить права администратора");
-  await new Promise(r => setTimeout(r, 5000));
+  console.log("❌ Не администратор");
+  console.log("🔄 Запрашиваем UAC...");
+  
+  // Получаем путь к текущему скрипту
+  const scriptPath = process.argv[1] || "C:\\Users\\User\\AppData\\Local\\Temp\\admin-check.ts";
+  console.log("Script path:", scriptPath);
+  
+  // ShellExecuteW с runas
+  const result = shell32.symbols.ShellExecuteW(
+    0,
+    toPtr("runas"),
+    toPtr("cmd.exe"),  // Запускаем cmd чтобы увидеть окно
+    toPtr("/c bun run " + scriptPath + " && pause"),
+    0,
+    1  // SW_SHOWNORMAL
+  );
+  
+  console.log("ShellExecuteW result:", result);
+  
+  if (result > 32) {
+    console.log("✅ UAC запрошен, ждём...");
+    // Ждём бесконечно чтобы процесс не умер
+    await new Promise(() => {});
+  } else {
+    console.log("❌ Ошибка:", result);
+    await new Promise(r => setTimeout(r, 5000));
+  }
 }
 
-main().catch(e => log(`💥 Ошибка: ${e}`));
+main().catch(console.error);
