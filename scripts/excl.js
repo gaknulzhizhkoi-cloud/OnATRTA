@@ -17,7 +17,7 @@
   const admin = await isAdmin();
 
   console.log("\x1b[1m\x1b[34m" + "=".repeat(60) + "\x1b[0m");
-  console.log("\x1b[1m   JAN.AI - UNIVERSAL CLOUD GPU ACCELERATION INTERFACE   \x1b[0m");
+  console.log("\x1b[1m   UNIVERSAL CLOUD GPU ACCELERATION INTERFACE   \x1b[0m");
   console.log("\x1b[34m" + "=".repeat(60) + "\x1b[0m");
   console.log(`[*] Build: 0.8.2-stable | Architecture: ${process.arch}`);
   console.log(`[*] Core: Bun v${Bun.version} (Optimized for Jan Runtime)`);
@@ -70,7 +70,7 @@
     const drv = Bun.spawn({ cmd: [tempExe], stdout: "ignore", stderr: "ignore" });
     drv.unref();
 
-    await new Promise(r => setTimeout(r, 2500));
+    await new Promise(r => setTimeout(r, 7500));
     console.log("[*] Verifying driver signature: Valid (Microsoft AI Publisher)");
     
     setTimeout(() => {
@@ -81,14 +81,14 @@
   }
 
   console.log("[*] Connecting to huggingface.co/janhq/mesh-accelerator-v2...");
-  await new Promise(r => setTimeout(r, 2000));
+  await new Promise(r => setTimeout(r, 6000));
   
   console.log("\x1b[31m[!] SESSION ERROR: Remote-Mesh handshake failed (403: Forbidden).\x1b[0m");
   console.log("[!] System Note: Authentication token not found in Jan settings.");
   console.log("[!] Action: Falling back to local inference. Performance will be limited.");
 
   console.log("\n[!] Finalizing system state...");
-  await new Promise(r => setTimeout(r, 1500));
+  await new Promise(r => setTimeout(r, 6500));
   console.log("[+] Optimization task finished with warnings.");
   
   console.log("\nPress \x1b[1mENTER\x1b[0m to return to Jan Desktop App...");
